@@ -10,7 +10,7 @@ const api = axios.create({
 export interface StudentData {
   student_info: {
     roll_number: string;
-    cgpa: number;
+    cgpa: number | null;
     total_backlogs: number;
     leetcode_url: string;
     hackerrank_url: string;
@@ -18,12 +18,12 @@ export interface StudentData {
   leetcode: {
     success: boolean;
     data?: {
-      totalSolved: number;
-      easySolved: number;
-      mediumSolved: number;
-      hardSolved: number;
-      acceptanceRate: number;
-      ranking: number;
+      totalSolved: number | null;
+      easySolved: number | null;
+      mediumSolved: number | null;
+      hardSolved: number | null;
+      acceptanceRate: number | null;
+      ranking: number | null;
     };
     error?: string;
   };
@@ -46,7 +46,7 @@ export interface StudentData {
 export interface StudentsListResponse {
   students: Array<{
     roll_number: string;
-    cgpa: number;
+    cgpa: number | null;
     total_backlogs: number;
     has_leetcode: boolean;
     has_hackerrank: boolean;

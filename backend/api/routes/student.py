@@ -10,7 +10,7 @@ import math
 router = APIRouter()
 
 def safe_float(value):
-    """Return None if value is NaN, infinite, or None; else return the float."""
+    """Convert NaN or infinite floats to None for JSON serialization."""
     if value is None:
         return None
     if isinstance(value, float):
@@ -18,12 +18,28 @@ def safe_float(value):
             return None
     return value
 
+def safe_int(value):
+    """Convert invalid integers to 0."""
+    if pd.isna(value):
+        return 0
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
 def load_student_data():
-    """Load student data from CSV file in backend/data directory."""
+    """Load student data from CSV file with proper error handling."""
     csv_path = os.path.join(os.path.dirname(__file__), '../../data/III_DS-Student_Profiles.csv')
     try:
         df = pd.read_csv(csv_path)
         df.columns = df.columns.str.strip()
+        
+        # Clean numeric columns to prevent NaN issues
+        if 'CGPA' in df.columns:
+            df['CGPA'] = pd.to_numeric(df['CGPA'], errors='coerce').fillna(0.0)
+        if 'Total Backlogs' in df.columns:
+            df['Total Backlogs'] = pd.to_numeric(df['Total Backlogs'], errors='coerce').fillna(0)
+            
         return df
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Student data file not found")
@@ -31,10 +47,11 @@ def load_student_data():
         raise HTTPException(status_code=500, detail=f"Error loading student data: {str(e)}")
 
 def fetch_leetcode_stats(username):
-    """Fetch LeetCode user stats from API with safe float values."""
+    """Fetch LeetCode statistics with safe float handling."""
     try:
         stats_api_url = f"https://leetcode-stats-api.herokuapp.com/{username}"
         response = requests.get(stats_api_url, timeout=10)
+        
         if response.status_code == 200:
             stats = response.json()
             return {
@@ -56,7 +73,7 @@ def fetch_leetcode_stats(username):
         return {'success': False, 'error': f'Unexpected error: {str(e)}'}
 
 def fetch_hackerrank_badges_svg(username):
-    """Fetch HackerRank badges by parsing SVG badge structure; returns badges with stars."""
+    """Fetch HackerRank badges by parsing SVG structure."""
     VALID_HACKERRANK_BADGES = {
         'Problem Solving', 'Java', 'Python', 'C Language', 'Cpp', 'C#', 'JavaScript',
         'Sql', '30 Days of Code', '10 Days of JavaScript', '10 Days of Statistics',
@@ -87,89 +104,34 @@ def fetch_hackerrank_badges_svg(username):
                           'functional programming', 'object oriented programming']
         
         real_badges = []
+        seen = set()
         
         for text in all_texts:
             text_lower = text.lower()
             for keyword in badge_keywords:
                 if keyword in text_lower:
                     text_title = text.strip().title()
-                    if text_title not in VALID_HACKERRANK_BADGES:
+                    if text_title not in VALID_HACKERRANK_BADGES or text_title in seen:
                         continue
                     
-                    text_elem = next((elem for elem in text_elements if elem.get_text().strip().lower() == text_lower), None)
+                    seen.add(text_title)
                     stars = 0
-                    if text_elem:
-                        current = text_elem
-                        found_stars = False
-                        for _ in range(5):
-                            if current is None:
-                                break
-                            star_section = current.find('g', class_='star-section')
-                            if star_section:
-                                badge_star_elements = star_section.find_all('svg', class_='badge-star')
-                                stars = len(badge_star_elements)
-                                found_stars = True
-                                break
-                            if current.parent:
-                                sibling_star_sections = current.parent.find_all('g', class_='star-section')
-                                if sibling_star_sections:
-                                    badge_star_elements = sibling_star_sections[0].find_all('svg', class_='badge-star')
-                                    stars = len(badge_star_elements)
-                                    found_stars = True
-                                    break
-                            current = current.parent
-                        if not found_stars and star_sections:
-                            # Try positional matching fallback
-                            text_x = text_elem.get('x', '0')
-                            text_y = text_elem.get('y', '0')
-                            try:
-                                text_x_num = float(text_x) if str(text_x).replace('.', '').replace('-', '').isdigit() else 0
-                                text_y_num = float(text_y) if str(text_y).replace('.', '').replace('-', '').isdigit() else 0
-                                closest_star_section = None
-                                min_distance = float('inf')
-                                for star_section in star_sections:
-                                    transform = star_section.get('transform', '')
-                                    if 'translate' in transform:
-                                        translate_match = re.search(r'translate\(([^,]+),\s*([^)]+)\)', transform)
-                                        if translate_match:
-                                            try:
-                                                star_x = float(translate_match.group(1))
-                                                star_y = float(translate_match.group(2))
-                                                distance = ((star_x - text_x_num) ** 2 + (star_y - text_y_num) ** 2) ** 0.5
-                                                if distance < min_distance:
-                                                    min_distance = distance
-                                                    closest_star_section = star_section
-                                            except:
-                                                continue
-                                if closest_star_section:
-                                    badge_star_elements = closest_star_section.find_all('svg', class_='badge-star')
-                                    stars = len(badge_star_elements)
-                                    found_stars = True
-                            except:
-                                pass
-                        if not found_stars and star_sections:
-                            total_star_elements = soup.find_all('svg', class_='badge-star')
-                            total_badges = len([t for t in all_texts if any(kw in t.lower() for kw in badge_keywords)])
-                            if total_badges > 0:
-                                stars = len(total_star_elements) // total_badges
-
+                    
+                    # Simple star counting logic
+                    if star_sections:
+                        total_star_elements = soup.find_all('svg', class_='badge-star')
+                        total_badges = len([t for t in all_texts if any(kw in t.lower() for kw in badge_keywords)])
+                        if total_badges > 0:
+                            stars = len(total_star_elements) // total_badges
+                    
                     real_badges.append({
-                        'Badge Name': text.title(),
-                        'Stars': stars
+                        'Badge Name': text_title,
+                        'Stars': max(0, min(5, stars))  # Ensure stars are between 0-5
                     })
                     break
         
-        # Remove duplicates by badge name
-        seen = set()
-        unique_badges = []
-        for badge in real_badges:
-            badge_key = badge['Badge Name'].lower()
-            if badge_key not in seen:
-                seen.add(badge_key)
-                unique_badges.append(badge)
-        
-        return unique_badges if unique_badges else None
-
+        return real_badges if real_badges else None
+            
     except Exception:
         return None
 
@@ -184,49 +146,50 @@ async def get_student_data(roll: str):
             raise HTTPException(status_code=404, detail="Student not found")
         
         data = student.iloc[0]
-        cgpa_val = data['CGPA']
-        backlog_val = data['Total Backlogs']
-
+        
+        # Sanitize all numeric values
         student_info = {
-            'roll_number': data['Roll Number'],
-            'cgpa': safe_float(float(cgpa_val)) if pd.notna(cgpa_val) else None,
-            'total_backlogs': int(backlog_val) if pd.notna(backlog_val) else 0,
-            'leetcode_url': data.get('Leet code links', ''),
-            'hackerrank_url': data.get('Hackerrank profile link', '')
+            'roll_number': str(data['Roll Number']),
+            'cgpa': safe_float(float(data['CGPA'])) if pd.notna(data['CGPA']) else None,
+            'total_backlogs': safe_int(data['Total Backlogs']),
+            'leetcode_url': str(data.get('Leet code links', '')),
+            'hackerrank_url': str(data.get('Hackerrank profile link', ''))
         }
-
+        
+        # Fetch LeetCode data
         leetcode_data = {'success': False}
-        if pd.notna(student_info['leetcode_url']) and 'leetcode.com' in str(student_info['leetcode_url']):
-            username = str(student_info['leetcode_url']).rstrip('/').split('/')[-1]
+        if pd.notna(student_info['leetcode_url']) and 'leetcode.com' in student_info['leetcode_url']:
+            username = student_info['leetcode_url'].rstrip('/').split('/')[-1]
             if username not in ['profile', 'account', 'login', '']:
                 leetcode_data = fetch_leetcode_stats(username)
-
+        
+        # Fetch HackerRank data
         hackerrank_data = {'success': False}
-        if pd.notna(student_info['hackerrank_url']) and 'hackerrank.com' in str(student_info['hackerrank_url']):
-            username = str(student_info['hackerrank_url']).rstrip('/').split('/')[-1]
+        if pd.notna(student_info['hackerrank_url']) and 'hackerrank.com' in student_info['hackerrank_url']:
+            username = student_info['hackerrank_url'].rstrip('/').split('/')[-1]
             badges = fetch_hackerrank_badges_svg(username)
             if badges:
-                # Ensure stars are ints and sanitize if necessary
-                for b in badges:
-                    stars = b.get('Stars')
-                    b['Stars'] = stars if isinstance(stars, int) and stars >= 0 else 0
+                # Ensure all badge data is safe for JSON serialization
+                for badge in badges:
+                    badge['Stars'] = safe_int(badge.get('Stars', 0))
+                
                 hackerrank_data = {
                     'success': True,
                     'data': {
                         'badges': badges,
                         'total_badges': len(badges),
-                        'total_stars': sum(b['Stars'] for b in badges),
+                        'total_stars': sum(badge['Stars'] for badge in badges),
                         'badge_image_url': f"https://hackerrank-badges.vercel.app/{username}"
                     }
                 }
-
+        
         return {
             'student_info': student_info,
             'leetcode': leetcode_data,
             'hackerrank': hackerrank_data,
             'timestamp': datetime.now().isoformat()
         }
-    
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -234,19 +197,17 @@ async def get_student_data(roll: str):
 
 @router.get("/students")
 async def get_all_students():
-    """Get basic info for all students"""
+    """Get basic info for all students with safe numeric handling"""
     try:
         df = load_student_data()
         students = []
         for _, row in df.iterrows():
-            cgpa_val = row['CGPA']
-            backlog_val = row['Total Backlogs']
             students.append({
-                'roll_number': row['Roll Number'],
-                'cgpa': safe_float(float(cgpa_val)) if pd.notna(cgpa_val) else None,
-                'total_backlogs': int(backlog_val) if pd.notna(backlog_val) else 0,
-                'has_leetcode': pd.notna(row.get('Leet code links', '')) and row.get('Leet code links', '') != '',
-                'has_hackerrank': pd.notna(row.get('Hackerrank profile link', '')) and row.get('Hackerrank profile link', '') != ''
+                'roll_number': str(row['Roll Number']),
+                'cgpa': safe_float(float(row['CGPA'])) if pd.notna(row['CGPA']) else None,
+                'total_backlogs': safe_int(row['Total Backlogs']),
+                'has_leetcode': pd.notna(row.get('Leet code links', '')) and str(row.get('Leet code links', '')) != '' and 'leetcode.com' in str(row.get('Leet code links', '')),
+                'has_hackerrank': pd.notna(row.get('Hackerrank profile link', '')) and str(row.get('Hackerrank profile link', '')) != '' and 'hackerrank.com' in str(row.get('Hackerrank profile link', ''))
             })
         return {'students': students, 'total': len(students)}
     except Exception as e:
