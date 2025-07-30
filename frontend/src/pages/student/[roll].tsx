@@ -18,14 +18,22 @@ const StudentDetail: React.FC = () => {
     }
   }, [roll]);
 
+  // Fixed: Replaced 'any' type with proper error handling
   const fetchData = async (rollNumber: string) => {
     setLoading(true);
     setError(null);
     try {
       const data = await fetchStudentData(rollNumber);
       setStudentData(data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch student data');
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setError(error.message);
+      } else if (typeof error === 'object' && error !== null && 'response' in error) {
+        const axiosError = error as { response?: { data?: { detail?: string } } };
+        setError(axiosError.response?.data?.detail || 'Failed to fetch student data');
+      } else {
+        setError('Failed to fetch student data');
+      }
     } finally {
       setLoading(false);
     }
@@ -75,7 +83,9 @@ const StudentDetail: React.FC = () => {
 
   const { student_info, leetcode, hackerrank } = studentData;
 
-  const getCgpaStatus = (cgpa: number) => {
+  // Fixed: Added null checking for CGPA
+  const getCgpaStatus = (cgpa: number | null) => {
+    if (!cgpa) return { text: 'No Data', color: 'text-gray-600', bg: 'bg-gray-50' };
     if (cgpa >= 9.0) return { text: 'Excellent', color: 'text-emerald-600', bg: 'bg-emerald-50' };
     if (cgpa >= 8.0) return { text: 'Good', color: 'text-blue-600', bg: 'bg-blue-50' };
     if (cgpa >= 7.0) return { text: 'Average', color: 'text-yellow-600', bg: 'bg-yellow-50' };
@@ -89,7 +99,7 @@ const StudentDetail: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold text-gray-900">
             Student Performance Analysis
           </h1>
           <p className="text-gray-600 mt-2">Roll Number: {student_info.roll_number}</p>
@@ -105,7 +115,7 @@ const StudentDetail: React.FC = () => {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="metric-card">
+        <div className="card p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
               <Target className="h-6 w-6 text-white" />
@@ -114,11 +124,11 @@ const StudentDetail: React.FC = () => {
               {cgpaStatus.text}
             </span>
           </div>
-          <h3 className="text-3xl font-bold text-gray-900">{student_info.cgpa}</h3>
+          <h3 className="text-3xl font-bold text-gray-900">{student_info.cgpa || 'N/A'}</h3>
           <p className="text-sm text-gray-600">CGPA</p>
         </div>
         
-        <div className="metric-card">
+        <div className="card p-6">
           <div className="flex items-center justify-between mb-3">
             <div className={`p-3 rounded-xl ${student_info.total_backlogs > 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-emerald-600'}`}>
               <TrendingUp className="h-6 w-6 text-white" />
@@ -133,7 +143,7 @@ const StudentDetail: React.FC = () => {
           <p className="text-sm text-gray-600">Backlogs</p>
         </div>
         
-        <div className="metric-card">
+        <div className="card p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl">
               <Code className="h-6 w-6 text-white" />
@@ -146,7 +156,7 @@ const StudentDetail: React.FC = () => {
           <p className="text-sm text-gray-600">Platform</p>
         </div>
         
-        <div className="metric-card">
+        <div className="card p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="p-3 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl">
               <Trophy className="h-6 w-6 text-white" />
@@ -161,7 +171,7 @@ const StudentDetail: React.FC = () => {
       </div>
 
       {/* LeetCode Section */}
-      <div className="card-premium">
+      <div className="card">
         <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center">
           <div className="flex items-center">
             <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl mr-4">
@@ -186,25 +196,25 @@ const StudentDetail: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-emerald-600">{leetcode.data?.totalSolved}</span>
+                  <span className="text-2xl font-bold text-emerald-600">{leetcode.data?.totalSolved || 0}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-900">Total Solved</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-blue-600">{leetcode.data?.easySolved}</span>
+                  <span className="text-2xl font-bold text-blue-600">{leetcode.data?.easySolved || 0}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-900">Easy</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-orange-600">{leetcode.data?.mediumSolved}</span>
+                  <span className="text-2xl font-bold text-orange-600">{leetcode.data?.mediumSolved || 0}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-900">Medium</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-red-100 to-red-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-red-600">{leetcode.data?.hardSolved}</span>
+                  <span className="text-2xl font-bold text-red-600">{leetcode.data?.hardSolved || 0}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-900">Hard</p>
               </div>
@@ -224,7 +234,7 @@ const StudentDetail: React.FC = () => {
       </div>
 
       {/* HackerRank Section */}
-      <div className="card-premium">
+      <div className="card">
         <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center">
           <div className="flex items-center">
             <div className="p-3 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl mr-4">
@@ -250,13 +260,13 @@ const StudentDetail: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="text-center">
                   <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <span className="text-3xl font-bold text-purple-600">{hackerrank.data?.total_badges}</span>
+                    <span className="text-3xl font-bold text-purple-600">{hackerrank.data?.total_badges || 0}</span>
                   </div>
                   <p className="text-lg font-semibold text-gray-900">Total Badges</p>
                 </div>
                 <div className="text-center">
                   <div className="w-20 h-20 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <span className="text-3xl font-bold text-yellow-600">{hackerrank.data?.total_stars}</span>
+                    <span className="text-3xl font-bold text-yellow-600">{hackerrank.data?.total_stars || 0}</span>
                   </div>
                   <p className="text-lg font-semibold text-gray-900">Total Stars</p>
                 </div>
@@ -264,10 +274,13 @@ const StudentDetail: React.FC = () => {
               
               {hackerrank.data?.badge_image_url && (
                 <div className="mb-8 text-center">
+                  {/* Fixed: Added eslint-disable for img element warning */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={hackerrank.data.badge_image_url}
                     alt="HackerRank Badges"
                     className="w-full max-w-4xl mx-auto rounded-2xl shadow-lg"
+                    style={{ height: 'auto' }}
                   />
                 </div>
               )}
