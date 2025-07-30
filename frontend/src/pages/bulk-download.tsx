@@ -3,10 +3,22 @@ import { Download, FileText, BarChart } from 'lucide-react';
 import { fetchBulkData, downloadBulkCSV } from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
+interface BulkStats {
+  total_students: number;
+  leetcode_success: number;
+  hackerrank_success: number;
+  avg_cgpa: number;
+}
+
+interface BulkDataResponse {
+  success: boolean;
+  stats: BulkStats;
+}
+
 const BulkDownload: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<BulkStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleBulkDownload = async () => {
@@ -15,7 +27,7 @@ const BulkDownload: React.FC = () => {
     setProgress('Starting bulk data collection...');
 
     try {
-      const result = await fetchBulkData();
+      const result: BulkDataResponse = await fetchBulkData();
 
       if (result.success) {
         setStats(result.stats);
@@ -37,8 +49,15 @@ const BulkDownload: React.FC = () => {
       } else {
         setError('Failed to generate bulk data');
       }
-    } catch (error: any) {
-      setError(error.message || 'Failed to download data');
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setError(error.message);
+      } else if (typeof error === 'object' && error !== null && 'response' in error) {
+        const axiosError = error as { response?: { data?: { detail?: string } } };
+        setError(axiosError.response?.data?.detail || 'Failed to download bulk data');
+      } else {
+        setError('Failed to download bulk data');
+      }
     } finally {
       setLoading(false);
     }
@@ -61,7 +80,7 @@ const BulkDownload: React.FC = () => {
         </div>
 
         <div className="bg-blue-50 p-4 rounded-md mb-6">
-          <h3 className="font-medium text-blue-800 mb-2">What's included:</h3>
+          <h3 className="font-medium text-blue-800 mb-2">What&apos;s included:</h3>
           <ul className="text-blue-700 text-sm space-y-1">
             <li>• Basic student information (Roll Number, CGPA, Backlogs)</li>
             <li>• LeetCode statistics (Total solved, Easy/Medium/Hard problems)</li>
@@ -77,7 +96,7 @@ const BulkDownload: React.FC = () => {
             <div className="mt-4 bg-yellow-50 p-4 rounded-md">
               <p className="text-yellow-800 text-sm">
                 ⏳ This process may take several minutes as we fetch data from external APIs for each student. 
-                Please be patient and don't close this page.
+                Please be patient and don&apos;t close this page.
               </p>
             </div>
           </div>
@@ -129,5 +148,4 @@ const BulkDownload: React.FC = () => {
   );
 };
 
-// CRITICAL: This default export is required for Next.js pages
 export default BulkDownload;
